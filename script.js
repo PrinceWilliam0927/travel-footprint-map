@@ -1,6 +1,7 @@
 const STORAGE_KEY = "travel-footprints";
 const LANGUAGE_KEY = "travel-footprints-language";
 const SEARCH_ENDPOINT = "https://nominatim.openstreetmap.org/search";
+const REVERSE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
 const COUNTRY_GEOJSON_URL = "https://cdn.jsdelivr.net/gh/datasets/geo-countries@master/data/countries.geojson";
 const SEARCH_DELAY = 350;
 const WORLD_BOUNDS = [[-85, -180], [85, 180]];
@@ -22,6 +23,7 @@ const translations = {
     sidebarLabel: "足迹管理",
     mapLabel: "世界地图",
     suggestionsLabel: "城市搜索结果",
+    photoImportLabel: "照片导入",
     listLabel: "足迹列表",
     appTitle: "我的世界足迹",
     cityLabel: "城市",
@@ -31,6 +33,17 @@ const translations = {
     notePlaceholder: "写一点这次旅程的记忆",
     addButton: "添加足迹",
     locateButton: "定位到我",
+    photoImportTitle: "从照片导入",
+    photoImportHint: "选择带有定位信息的原图，自动生成照片足迹。",
+    photoChooseButton: "选择照片",
+    photoImportIdle: "还没有导入照片。",
+    photoImportReading: "正在读取 {count} 张照片...",
+    photoImportDone: "已导入 {imported} 张照片，{skipped} 张没有定位信息。",
+    photoImportUnavailable: "照片解析库暂时不可用，请检查网络后刷新页面。",
+    photoNoGps: "没有定位信息",
+    photoImported: "已添加到地图",
+    photoFailed: "读取失败",
+    photoNote: "从照片导入：{file}",
     visitedPlaces: "去过的地方",
     clearButton: "清空",
     emptyState: "输入城市名并选择搜索结果，开始记录第一段旅程。",
@@ -68,6 +81,7 @@ const translations = {
     sidebarLabel: "Footprint management",
     mapLabel: "World map",
     suggestionsLabel: "City search results",
+    photoImportLabel: "Photo import",
     listLabel: "Footprint list",
     appTitle: "My World Footprints",
     cityLabel: "City",
@@ -77,6 +91,17 @@ const translations = {
     notePlaceholder: "Write a memory from this trip",
     addButton: "Add Footprint",
     locateButton: "Locate Me",
+    photoImportTitle: "Import From Photos",
+    photoImportHint: "Choose original photos with location data to create footprints automatically.",
+    photoChooseButton: "Choose Photos",
+    photoImportIdle: "No photos imported yet.",
+    photoImportReading: "Reading {count} photos...",
+    photoImportDone: "Imported {imported} photos. {skipped} had no location data.",
+    photoImportUnavailable: "The photo parser is unavailable. Check your network and refresh.",
+    photoNoGps: "No location data",
+    photoImported: "Added to map",
+    photoFailed: "Could not read",
+    photoNote: "Imported from photo: {file}",
     visitedPlaces: "Visited Places",
     clearButton: "Clear",
     emptyState: "Search for a city and choose a result to start your first footprint.",
@@ -122,6 +147,9 @@ const locateButton = document.querySelector("#locateButton");
 const selectedText = document.querySelector("#selectedText");
 const coordinateText = document.querySelector("#coordinateText");
 const languageSelect = document.querySelector("#languageSelect");
+const photoInput = document.querySelector("#photoInput");
+const photoImportStatus = document.querySelector("#photoImportStatus");
+const photoImportList = document.querySelector("#photoImportList");
 
 const map = L.map("map", {
   maxBounds: WORLD_BOUNDS,
@@ -172,6 +200,11 @@ languageSelect.addEventListener("change", () => {
   applyLanguage();
   renderSuggestions(currentSuggestions);
   render();
+});
+
+photoInput.addEventListener("change", async () => {
+  await importPhotos(Array.from(photoInput.files || []));
+  photoInput.value = "";
 });
 
 placeInput.addEventListener("input", () => {
@@ -325,6 +358,9 @@ function applyLanguage() {
   });
 
   footprintUnit.textContent = t("footprintUnit");
+  if (!photoImportList.children.length) {
+    photoImportStatus.textContent = t("photoImportIdle");
+  }
   updateStatusText();
 }
 
@@ -468,6 +504,140 @@ function selectSearchResult(result) {
   placeInput.value = result.name;
   hideSuggestions();
   setDraftLocation(result.lat, result.lng, result.name, result.displayName);
+}
+
+async function importPhotos(files) {
+  if (!files.length) {
+    return;
+  }
+
+  if (!window.exifr) {
+    photoImportStatus.textContent = t("photoImportUnavailable");
+    return;
+  }
+
+  let imported = 0;
+  let skipped = 0;
+  const importedFootprints = [];
+  const results = [];
+
+  photoImportStatus.textContent = t("photoImportReading", { count: String(files.length) });
+  photoImportList.innerHTML = "";
+
+  for (const file of files) {
+    try {
+      const gps = await exifr.gps(file);
+
+      if (!gps || !Number.isFinite(gps.latitude) || !Number.isFinite(gps.longitude)) {
+        skipped += 1;
+        results.push({ file: file.name, status: "photoNoGps", kind: "skip" });
+        continue;
+      }
+
+      const place = await reverseGeocode(gps.latitude, gps.longitude);
+      const exif = await exifr.parse(file, ["DateTimeOriginal", "CreateDate"]);
+      const footprint = {
+        id: crypto.randomUUID(),
+        place: place.name,
+        displayName: place.displayName,
+        countryCode: place.countryCode,
+        countryName: place.countryName,
+        lat: gps.latitude,
+        lng: gps.longitude,
+        date: formatExifDate(exif?.DateTimeOriginal || exif?.CreateDate),
+        note: t("photoNote", { file: file.name }),
+        source: "photo",
+        photoName: file.name,
+        createdAt: new Date().toISOString(),
+      };
+
+      imported += 1;
+      importedFootprints.push(footprint);
+      results.push({ file: file.name, status: "photoImported", kind: "success", place: place.displayName });
+    } catch {
+      skipped += 1;
+      results.push({ file: file.name, status: "photoFailed", kind: "skip" });
+    }
+  }
+
+  if (importedFootprints.length) {
+    footprints = [...importedFootprints, ...footprints];
+    saveFootprints();
+    render();
+    const first = importedFootprints[0];
+    map.setView([first.lat, first.lng], Math.max(map.getZoom(), 5));
+  }
+
+  photoImportStatus.textContent = t("photoImportDone", {
+    imported: String(imported),
+    skipped: String(skipped),
+  });
+  renderPhotoImportResults(results);
+}
+
+async function reverseGeocode(lat, lng) {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lng),
+    format: "jsonv2",
+    addressdetails: "1",
+    "accept-language": t("searchLanguage"),
+  });
+
+  const response = await fetch(`${REVERSE_ENDPOINT}?${params.toString()}`, {
+    headers: {
+      "Accept": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Reverse geocode failed");
+  }
+
+  return normalizeReversePlace(await response.json(), lat, lng);
+}
+
+function normalizeReversePlace(item, lat, lng) {
+  const address = item.address || {};
+  const name = address.city
+    || address.town
+    || address.village
+    || address.municipality
+    || address.county
+    || address.state
+    || item.name
+    || item.display_name
+    || `${formatCoordinate(lat, "lat")}${t("coordinateJoin")}${formatCoordinate(lng, "lng")}`;
+
+  return {
+    name,
+    displayName: item.display_name || name,
+    countryCode: (address.country_code || "").toUpperCase(),
+    countryName: address.country || "",
+  };
+}
+
+function renderPhotoImportResults(results) {
+  photoImportList.innerHTML = results.map((result) => `
+    <li class="photo-result ${result.kind === "success" ? "is-success" : "is-skip"}">
+      <span>${escapeHtml(result.file)}</span>
+      <small>${escapeHtml(t(result.status))}${result.place ? ` · ${escapeHtml(result.place)}` : ""}</small>
+    </li>
+  `).join("");
+}
+
+function formatExifDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
 }
 
 async function loadCountryLayer() {

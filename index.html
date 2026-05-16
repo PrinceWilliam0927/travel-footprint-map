@@ -51,6 +51,19 @@
         </div>
       </form>
 
+      <section class="photo-import" aria-label="照片导入" data-i18n-aria="photoImportLabel">
+        <div>
+          <h2 data-i18n="photoImportTitle">从照片导入</h2>
+          <p data-i18n="photoImportHint">选择带有定位信息的原图，自动生成照片足迹。</p>
+        </div>
+        <label class="file-picker">
+          <span data-i18n="photoChooseButton">选择照片</span>
+          <input id="photoInput" type="file" accept="image/*" multiple>
+        </label>
+        <p class="photo-status" id="photoImportStatus" data-i18n="photoImportIdle">还没有导入照片。</p>
+        <ul class="photo-import-list" id="photoImportList"></ul>
+      </section>
+
       <section class="footprint-panel" aria-label="足迹列表" data-i18n-aria="listLabel">
         <div class="panel-heading">
           <h2 data-i18n="visitedPlaces">去过的地方</h2>
@@ -73,6 +86,7 @@
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

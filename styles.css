@@ -232,6 +232,94 @@ textarea:focus {
   margin-top: 2px;
 }
 
+.photo-import {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.photo-import h2 {
+  margin-bottom: 5px;
+}
+
+.photo-import p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.file-picker {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border-radius: 8px;
+  background: #172033;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+  text-align: center;
+}
+
+.file-picker:hover {
+  background: #24324a;
+}
+
+.file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.photo-status {
+  min-height: 20px;
+}
+
+.photo-import-list {
+  display: grid;
+  gap: 7px;
+  max-height: 150px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.photo-result {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #f2f4f7;
+}
+
+.photo-result span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.photo-result small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.photo-result.is-success {
+  background: #e6f7f3;
+}
+
+.photo-result.is-skip {
+  background: #fff4ed;
+}
+
 .button,
 .text-button {
   border: 0;
