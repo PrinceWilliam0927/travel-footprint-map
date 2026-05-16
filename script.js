@@ -1,4 +1,5 @@
 const STORAGE_KEY = "travel-footprints";
+const LANGUAGE_KEY = "travel-footprints-language";
 const SEARCH_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 const COUNTRY_GEOJSON_URL = "https://cdn.jsdelivr.net/gh/datasets/geo-countries@master/data/countries.geojson";
 const SEARCH_DELAY = 350;
@@ -12,6 +13,101 @@ const COUNTRY_CODE_ALIASES = {
   TW: ["CN-TW"],
 };
 
+const translations = {
+  "zh-CN": {
+    htmlLang: "zh-CN",
+    documentTitle: "我的世界足迹地图",
+    languageLabel: "语言",
+    languageSelectLabel: "选择语言",
+    sidebarLabel: "足迹管理",
+    mapLabel: "世界地图",
+    suggestionsLabel: "城市搜索结果",
+    listLabel: "足迹列表",
+    appTitle: "我的世界足迹",
+    cityLabel: "城市",
+    cityPlaceholder: "输入城市名，例如：上海、巴黎、东京",
+    dateLabel: "日期",
+    noteLabel: "备注",
+    notePlaceholder: "写一点这次旅程的记忆",
+    addButton: "添加足迹",
+    locateButton: "定位到我",
+    visitedPlaces: "去过的地方",
+    clearButton: "清空",
+    emptyState: "输入城市名并选择搜索结果，开始记录第一段旅程。",
+    footprintUnit: "个地点已点亮",
+    initialTitle: "搜索城市添加足迹",
+    initialDetail: "选择联想结果后会自动定位到地图",
+    minSearchDetail: "至少输入 2 个字开始联想搜索",
+    searching: "正在搜索...",
+    noCityFound: "没有找到这个城市",
+    noCityFoundDetail: "请换一个更完整的城市名再试",
+    noSuggestions: "没有找到匹配城市",
+    searchUnavailable: "城市搜索暂时不可用",
+    searchUnavailableDetail: "请检查网络后再试",
+    footprintAdded: "足迹已添加",
+    confirmClear: "确定清空所有足迹吗？",
+    geolocationUnsupported: "当前浏览器不支持定位",
+    locating: "正在获取当前位置...",
+    currentLocation: "我的当前位置",
+    locationFailed: "定位失败",
+    locationFailedDetail: "可以输入城市名搜索添加",
+    countryLayerUnavailable: "国家阴影层暂时不可用",
+    countryLayerUnavailableDetail: "足迹标记仍然可以正常使用",
+    dateMissing: "未填写日期",
+    deleteLabel: "删除 {place}",
+    selectedTitle: "已选择：{place}",
+    draftTooltip: "待添加足迹",
+    coordinateJoin: "，",
+    searchLanguage: "zh-CN,zh,en",
+  },
+  en: {
+    htmlLang: "en",
+    documentTitle: "My World Footprint Map",
+    languageLabel: "Language",
+    languageSelectLabel: "Choose language",
+    sidebarLabel: "Footprint management",
+    mapLabel: "World map",
+    suggestionsLabel: "City search results",
+    listLabel: "Footprint list",
+    appTitle: "My World Footprints",
+    cityLabel: "City",
+    cityPlaceholder: "Enter a city, e.g. Shanghai, Paris, Tokyo",
+    dateLabel: "Date",
+    noteLabel: "Note",
+    notePlaceholder: "Write a memory from this trip",
+    addButton: "Add Footprint",
+    locateButton: "Locate Me",
+    visitedPlaces: "Visited Places",
+    clearButton: "Clear",
+    emptyState: "Search for a city and choose a result to start your first footprint.",
+    footprintUnit: "places lit up",
+    initialTitle: "Search a city to add a footprint",
+    initialDetail: "Choose a suggestion to locate it on the map",
+    minSearchDetail: "Type at least 2 characters to search",
+    searching: "Searching...",
+    noCityFound: "City not found",
+    noCityFoundDetail: "Try a more complete city name",
+    noSuggestions: "No matching cities found",
+    searchUnavailable: "City search is unavailable",
+    searchUnavailableDetail: "Check your network and try again",
+    footprintAdded: "Footprint added",
+    confirmClear: "Clear all footprints?",
+    geolocationUnsupported: "This browser does not support location",
+    locating: "Getting your current location...",
+    currentLocation: "My current location",
+    locationFailed: "Location failed",
+    locationFailedDetail: "You can search for a city instead",
+    countryLayerUnavailable: "Country shading is unavailable",
+    countryLayerUnavailableDetail: "Footprint markers still work normally",
+    dateMissing: "No date",
+    deleteLabel: "Delete {place}",
+    selectedTitle: "Selected: {place}",
+    draftTooltip: "Pending footprint",
+    coordinateJoin: ", ",
+    searchLanguage: "en,zh-CN,zh",
+  },
+};
+
 const form = document.querySelector("#footprintForm");
 const placeInput = document.querySelector("#placeInput");
 const suggestions = document.querySelector("#suggestions");
@@ -20,10 +116,12 @@ const noteInput = document.querySelector("#noteInput");
 const list = document.querySelector("#footprintList");
 const emptyState = document.querySelector("#emptyState");
 const countText = document.querySelector("#footprintCount");
+const footprintUnit = document.querySelector("#footprintUnit");
 const clearButton = document.querySelector("#clearButton");
 const locateButton = document.querySelector("#locateButton");
 const selectedText = document.querySelector("#selectedText");
 const coordinateText = document.querySelector("#coordinateText");
+const languageSelect = document.querySelector("#languageSelect");
 
 const map = L.map("map", {
   maxBounds: WORLD_BOUNDS,
@@ -44,14 +142,18 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
 const countryLayerGroup = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 
+let currentLanguage = loadLanguage();
 let countryLayer = null;
 let draftMarker = null;
 let selectedPlace = null;
 let searchTimer = null;
 let searchController = null;
 let currentSuggestions = [];
+let statusState = { title: "initialTitle", detail: "initialDetail", titleParams: {}, detailParams: {} };
 let footprints = loadFootprints();
 
+languageSelect.value = currentLanguage;
+applyLanguage();
 fitWorldToViewport();
 render();
 loadCountryLayer();
@@ -62,6 +164,14 @@ window.addEventListener("resize", () => {
   if (!footprints.length && !selectedPlace) {
     fitWorldToViewport();
   }
+});
+
+languageSelect.addEventListener("change", () => {
+  currentLanguage = languageSelect.value;
+  localStorage.setItem(LANGUAGE_KEY, currentLanguage);
+  applyLanguage();
+  renderSuggestions(currentSuggestions);
+  render();
 });
 
 placeInput.addEventListener("input", () => {
@@ -101,8 +211,7 @@ form.addEventListener("submit", async (event) => {
   if (!selectedPlace) {
     const result = await searchFirstResult(placeInput.value.trim());
     if (!result) {
-      selectedText.textContent = "没有找到这个城市";
-      coordinateText.textContent = "请换一个更完整的城市名再试";
+      setStatus("noCityFound", "noCityFoundDetail");
       return;
     }
     selectSearchResult(result);
@@ -128,8 +237,7 @@ form.addEventListener("submit", async (event) => {
   selectedPlace = null;
   clearDraftMarker();
   hideSuggestions();
-  selectedText.textContent = "足迹已添加";
-  coordinateText.textContent = footprint.displayName;
+  setStatus("footprintAdded", null, {}, {}, footprint.displayName);
 });
 
 list.addEventListener("click", (event) => {
@@ -153,7 +261,7 @@ list.addEventListener("click", (event) => {
 });
 
 clearButton.addEventListener("click", () => {
-  if (!footprints.length || !window.confirm("确定清空所有足迹吗？")) {
+  if (!footprints.length || !window.confirm(t("confirmClear"))) {
     return;
   }
 
@@ -165,17 +273,17 @@ clearButton.addEventListener("click", () => {
 
 locateButton.addEventListener("click", () => {
   if (!navigator.geolocation) {
-    selectedText.textContent = "当前浏览器不支持定位";
+    setStatus("geolocationUnsupported", null);
     return;
   }
 
-  selectedText.textContent = "正在获取当前位置...";
+  setStatus("locating", null);
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const { latitude, longitude } = position.coords;
       const place = {
-        name: "我的当前位置",
-        displayName: "我的当前位置",
+        name: t("currentLocation"),
+        displayName: t("currentLocation"),
         countryCode: "",
         countryName: "",
         lat: latitude,
@@ -185,12 +293,59 @@ locateButton.addEventListener("click", () => {
       map.setView([latitude, longitude], 9);
     },
     () => {
-      selectedText.textContent = "定位失败";
-      coordinateText.textContent = "可以输入城市名搜索添加";
+      setStatus("locationFailed", "locationFailedDetail");
     },
     { enableHighAccuracy: true, timeout: 8000 },
   );
 });
+
+function loadLanguage() {
+  const saved = localStorage.getItem(LANGUAGE_KEY);
+  if (translations[saved]) {
+    return saved;
+  }
+
+  return navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+}
+
+function applyLanguage() {
+  document.documentElement.lang = t("htmlLang");
+  document.title = t("documentTitle");
+
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n);
+  });
+
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    element.placeholder = t(element.dataset.i18nPlaceholder);
+  });
+
+  document.querySelectorAll("[data-i18n-aria]").forEach((element) => {
+    element.setAttribute("aria-label", t(element.dataset.i18nAria));
+  });
+
+  footprintUnit.textContent = t("footprintUnit");
+  updateStatusText();
+}
+
+function t(key, params = {}) {
+  const template = translations[currentLanguage][key] || translations["zh-CN"][key] || key;
+  return Object.entries(params).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, value),
+    template,
+  );
+}
+
+function setStatus(title, detail, titleParams = {}, detailParams = {}, literalDetail = null) {
+  statusState = { title, detail, titleParams, detailParams, literalDetail };
+  updateStatusText();
+}
+
+function updateStatusText() {
+  selectedText.textContent = t(statusState.title, statusState.titleParams);
+  coordinateText.textContent = statusState.literalDetail
+    || (statusState.detail ? t(statusState.detail, statusState.detailParams) : "");
+}
 
 function scheduleSearch(query) {
   window.clearTimeout(searchTimer);
@@ -198,12 +353,11 @@ function scheduleSearch(query) {
   if (query.length < 2) {
     currentSuggestions = [];
     renderSuggestions([]);
-    selectedText.textContent = "搜索城市添加足迹";
-    coordinateText.textContent = "至少输入 2 个字开始联想搜索";
+    setStatus("initialTitle", "minSearchDetail");
     return;
   }
 
-  suggestions.innerHTML = '<div class="suggestion-status">正在搜索...</div>';
+  suggestions.innerHTML = `<div class="suggestion-status">${t("searching")}</div>`;
   suggestions.classList.add("is-open");
 
   searchTimer = window.setTimeout(async () => {
@@ -233,7 +387,7 @@ async function searchPlaces(query, limit) {
     format: "jsonv2",
     addressdetails: "1",
     limit: String(limit),
-    "accept-language": "zh-CN,zh,en",
+    "accept-language": t("searchLanguage"),
   });
 
   try {
@@ -257,8 +411,7 @@ async function searchPlaces(query, limit) {
       return currentSuggestions;
     }
 
-    selectedText.textContent = "城市搜索暂时不可用";
-    coordinateText.textContent = "请检查网络后再试";
+    setStatus("searchUnavailable", "searchUnavailableDetail");
     return [];
   }
 }
@@ -292,7 +445,7 @@ function renderSuggestions(results) {
   }
 
   if (!results.length) {
-    suggestions.innerHTML = '<div class="suggestion-status">没有找到匹配城市</div>';
+    suggestions.innerHTML = `<div class="suggestion-status">${t("noSuggestions")}</div>`;
     suggestions.classList.add("is-open");
     return;
   }
@@ -334,8 +487,7 @@ async function loadCountryLayer() {
     countryLayer.bringToBack();
     updateCountryStyles();
   } catch {
-    selectedText.textContent = "国家阴影层暂时不可用";
-    coordinateText.textContent = "足迹标记仍然可以正常使用";
+    setStatus("countryLayerUnavailable", "countryLayerUnavailableDetail");
   }
 }
 
@@ -364,8 +516,7 @@ function resetMapPromptIfEmpty() {
     return;
   }
 
-  selectedText.textContent = "搜索城市添加足迹";
-  coordinateText.textContent = "选择联想结果后会自动定位到地图";
+  setStatus("initialTitle", "initialDetail");
   fitWorldToViewport();
 }
 
@@ -422,6 +573,7 @@ function saveFootprints() {
 
 function render() {
   countText.textContent = String(footprints.length);
+  footprintUnit.textContent = t("footprintUnit");
   emptyState.classList.toggle("is-hidden", footprints.length > 0);
   clearButton.disabled = footprints.length === 0;
   renderList();
@@ -431,9 +583,9 @@ function render() {
 
 function renderList() {
   list.innerHTML = footprints.map((footprint) => {
-    const date = footprint.date ? escapeHtml(footprint.date) : "未填写日期";
+    const date = footprint.date ? escapeHtml(footprint.date) : t("dateMissing");
     const note = footprint.note ? `<p class="note">${escapeHtml(footprint.note)}</p>` : "";
-    const location = footprint.displayName || `${formatCoordinate(footprint.lat, "lat")}，${formatCoordinate(footprint.lng, "lng")}`;
+    const location = footprint.displayName || `${formatCoordinate(footprint.lat, "lat")}${t("coordinateJoin")}${formatCoordinate(footprint.lng, "lng")}`;
 
     return `
       <li class="footprint-card" data-footprint-id="${footprint.id}">
@@ -442,7 +594,7 @@ function renderList() {
             <div class="place-name">${escapeHtml(footprint.place)}</div>
             <div class="meta">${date}<br>${escapeHtml(location)}</div>
           </div>
-          <button class="delete-button" type="button" data-delete-id="${footprint.id}" aria-label="删除 ${escapeHtml(footprint.place)}">×</button>
+          <button class="delete-button" type="button" data-delete-id="${footprint.id}" aria-label="${escapeHtml(t("deleteLabel", { place: footprint.place }))}">×</button>
         </div>
         ${note}
       </li>
@@ -466,8 +618,8 @@ function renderMarkers() {
     marker.bindPopup(`
       <div class="popup-title">${escapeHtml(footprint.place)}</div>
       <div class="popup-meta">
-        ${footprint.date ? escapeHtml(footprint.date) : "未填写日期"}<br>
-        ${escapeHtml(footprint.displayName || `${formatCoordinate(footprint.lat, "lat")}，${formatCoordinate(footprint.lng, "lng")}`)}
+        ${footprint.date ? escapeHtml(footprint.date) : t("dateMissing")}<br>
+        ${escapeHtml(footprint.displayName || `${formatCoordinate(footprint.lat, "lat")}${t("coordinateJoin")}${formatCoordinate(footprint.lng, "lng")}`)}
       </div>
       ${footprint.note ? `<p>${escapeHtml(footprint.note)}</p>` : ""}
     `);
@@ -478,8 +630,7 @@ function setDraftLocation(lat, lng, label, description) {
   const fixedLat = Number(lat.toFixed(6));
   const fixedLng = Number(lng.toFixed(6));
 
-  selectedText.textContent = `已选择：${label}`;
-  coordinateText.textContent = description || `${formatCoordinate(fixedLat, "lat")}，${formatCoordinate(fixedLng, "lng")}`;
+  setStatus("selectedTitle", null, { place: label }, {}, description || `${formatCoordinate(fixedLat, "lat")}${t("coordinateJoin")}${formatCoordinate(fixedLng, "lng")}`);
   map.setView([fixedLat, fixedLng], Math.max(map.getZoom(), 7));
 
   if (draftMarker) {
@@ -494,7 +645,7 @@ function setDraftLocation(lat, lng, label, description) {
     }).addTo(map);
   }
 
-  draftMarker.bindTooltip("待添加足迹", { permanent: false, direction: "top" });
+  draftMarker.bindTooltip(t("draftTooltip"), { permanent: false, direction: "top" });
 }
 
 function clearDraftMarker() {
